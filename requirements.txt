@@ -1,0 +1,31 @@
+# TTD-DR (Test-Time Diffusion Deep Researcher) Dependencies
+# Core framework and AI models
+openai
+langgraph
+langchain
+langchain-core
+langchain-community
+langchain-naver
+
+# Web search tools
+tavily-python
+duckduckgo-search
+langchain-tavily
+
+# Data models and validation
+pydantic
+typing-extensions
+
+# Environment and configuration
+python-dotenv
+
+# HTTP and networking
+httpx
+requests
+
+# Optional: Enhanced terminal experience
+rich
+
+# Development and testing (optional)
+pytest
+pytest-asyncio
