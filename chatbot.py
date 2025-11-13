@@ -15,12 +15,23 @@ Requirements:
 
 import asyncio
 import os
+import json
 from typing import Optional
 from dotenv import load_dotenv
 
 from langgraph_ttd_dr.interface import TTDResearcher
 from langgraph_ttd_dr.client_factory import create_openai_client, detect_config
 
+SAVE_DIR = "temp"
+if not os.path.exists(SAVE_DIR):
+    os.makedirs(SAVE_DIR)
+
+def custom_serializer(obj):
+    """Handle custom objects for JSON serialization."""
+    try: # Try to use Pydantic's .model_dump()
+        return obj.model_dump()
+    except AttributeError: # If it's not a Pydantic model, convert to string
+        return str(obj)
 
 class SimpleTTDChatbot:
     """Simple chatbot interface for TTD-DR research system"""
@@ -44,7 +55,7 @@ class SimpleTTDChatbot:
         try:
             self.researcher = TTDResearcher(
                 client=self.client,
-                max_iterations=5,     # Maximum research iterations
+                max_iterations=3,     # Maximum research iterations
                 max_sources=15,       # Maximum sources per research
                 search_engines=['tavily', 'duckduckgo', 'naver'],
                 search_results_per_gap=3
@@ -126,8 +137,9 @@ class SimpleTTDChatbot:
             print("-" * 60)
             
             # Conduct research
-            report, metadata = await self.researcher.research(query)
-            
+#            report, metadata = await self.researcher.research(query)
+            report, metadata = await self.researcher.research_async(query)
+
             # Display results
             print("\n" + "="*60)
             print("📋 RESEARCH REPORT COMPLETED")
@@ -142,7 +154,23 @@ class SimpleTTDChatbot:
             print("-" * 30)
             print(report)
             print("-" * 60)
-            
+
+            try:
+                session_id = metadata.get("session_id", "unknown_session")
+                report_filename = os.path.join(SAVE_DIR, f"{session_id}_report.txt")
+                metadata_filename = os.path.join(SAVE_DIR, f"{session_id}_metadata.json")
+                
+                # Save final report
+                with open(report_filename, "w", encoding="utf-8") as f:
+                    f.write(report)
+                
+                # Save metadata
+                with open(metadata_filename, "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=4, default=custom_serializer)
+
+            except Exception as e:
+                print(f"❌ Failed to save report/metadata files: {e}")
+
             # Display metadata summary
             if 'draft_evolution' in metadata:
                 print(f"📝 Draft Evolution: {len(metadata['draft_evolution'])} stages")
@@ -260,4 +288,4 @@ if __name__ == "__main__":
         run_quick_example()
     else:
         # Run interactive chatbot
-        asyncio.run(main()) 
+        asyncio.run(main())

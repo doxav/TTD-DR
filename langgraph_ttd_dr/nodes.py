@@ -876,16 +876,17 @@ class SearchAgentNode:
             print(f"Dynamic search question generation failed: {str(e)}")
             return []
     
-    def _search_single_query(self, query: str) -> List[Dict]:
+    def _search_single_query(self, query: str, enabled_engines: Optional[List[str]] = None) -> List[Dict]:
         """
         Perform a single search query using the search_web function.
         """
         try:
             print(f"Searching: {query}")
+            engines = enabled_engines or ['tavily', 'duckduckgo', 'naver']
             web_results = search_web(
                 query,
-                max_results=3, # Fixed number of results for simplicity
-                enabled_engines=['tavily', 'duckduckgo', 'naver'] # Example engines
+                max_results=3,  # Fixed number of results for simplicity
+                enabled_engines=engines
             )
             
             sources = []
@@ -971,6 +972,7 @@ class SearchAgentNode:
             
             # Get search questions from draft-based question generator
             search_queries = state.get("search_questions", [])
+            enabled_engines = state.get("search_engines", ['tavily', 'duckduckgo', 'naver'])
             
             if not search_queries:
                 print("No search questions provided - skipping search")
@@ -990,12 +992,19 @@ class SearchAgentNode:
             with ThreadPoolExecutor(max_workers=3) as executor:
                 search_futures = []
                 for query in search_queries:
-                    future = executor.submit(self._search_single_query, query)
+                    future = executor.submit(self._search_single_query, query, enabled_engines)
                     search_futures.append((query, future))
                 
                 for query, future in search_futures:
                     try:
                         results = future.result(timeout=60)
+                        # --- capture top result info ---
+                        top_result_title = "Untitled"
+                        top_result_url = ""
+                        if results:
+                            top_result = results[0] # Get the first result
+                            top_result_title = top_result.get('title', 'Untitled')
+                            top_result_url = top_result.get('url', '')
                         all_search_results.extend(results)
                         
                         if results:
@@ -1006,15 +1015,19 @@ class SearchAgentNode:
                                 "query": query,
                                 "answer": evolved_answer,
                                 "source_count": len(results),
-                                "evolution_used": True
+                                "evolution_used": True,
+                                "title": top_result_title,
+                                "url": top_result_url
                             })
                         else:
                             search_answers.append({
                                 "query": query,
                                 "answer": "No relevant information found",
                                 "source_count": 0,
-                                "evolution_used": False
-                            })
+                                "evolution_used": False,
+                                "title": "No relevant information found",
+                                "url": ""
+                                })
                             
                     except Exception as e:
                         print(f"Search failed for query: {query[:50]}... - {str(e)}")
@@ -1038,6 +1051,8 @@ class SearchAgentNode:
                     source_entry = {
                         "gap_addressed": answer_data["query"],  # Q_t
                         "content": answer_data["answer"],       # A_t  
+                        "title": answer_data.get("title", "Untitled"),
+                        "url": answer_data.get("url", ""),
                         "source_count": answer_data["source_count"],
                         "evolution_used": answer_data.get("evolution_used", False),
                         "search_timestamp": time.time(),
@@ -1280,10 +1295,14 @@ class ReportGeneratorNode:
             
             # Remove any existing references section from draft
             clean_draft = remove_references_section(state['current_draft'])
-            
+
+            # Convert sources list to indexed dictionary for reference building
+            sources_list = state.get("sources", [])
+            citations_dict = {i+1: source for i, source in enumerate(sources_list)}
+
             # Build references section
-            references_section = build_references_section(state.get("sources", []))
-            
+            references_section = build_references_section(citations_dict)
+
             # Build metadata section
             metadata_section = build_metadata_section(state)
             

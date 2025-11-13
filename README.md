@@ -63,6 +63,15 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 TAVILY_API_KEY=tvly-your-tavily-api-key
 NAVER_CLIENT_ID=your-naver-client-id
 NAVER_CLIENT_SECRET=your-naver-client-secret
+
+# Optional: self-hosted SearXNG meta-search engine
+# Provide either the direct /search endpoint or a base URL
+SEARXNG_API_URL=https://your-searxng-instance.example.com/search
+SEARXNG_API_URL=http://127.0.0.1:8080/search
+# Alternative legacy variable supported by WriteHere deployments
+# SearXNG=https://your-searxng-instance.example.com/search
+# Optional bearer token if your instance requires auth
+# SEARXNG_API_KEY=your-token-here
 ```
 
 ### 3. Run the Simple Chatbot
@@ -237,7 +246,7 @@ TTD-DR tracks multiple quality dimensions:
 ```python
 researcher = TTDResearcher(
     client=client,
-    search_engines=['tavily', 'duckduckgo'],  # Customize search engines
+    search_engines=['tavily', 'duckduckgo', 'searxng'],  # Include SearXNG when configured
     search_results_per_gap=5,                 # More results per gap
     max_iterations=10                         # Longer research
 )

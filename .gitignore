@@ -46,6 +46,7 @@ Thumbs.db
 # Test files
 test_*.py
 *_test.py
+!tests/test_searxng_integration.py
 
 # Temporary files
 *.tmp

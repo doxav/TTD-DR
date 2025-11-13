@@ -330,7 +330,7 @@ def validate_search_engines(search_engines: List[str]) -> List[str]:
     Returns:
         Validated list of search engines
     """
-    valid_engines = ['tavily', 'duckduckgo', 'naver']
+    valid_engines = ['tavily', 'duckduckgo', 'naver', 'searxng']
     validated = [engine for engine in search_engines if engine in valid_engines]
     
     if not validated:

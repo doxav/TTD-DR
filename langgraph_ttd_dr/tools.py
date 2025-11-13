@@ -2,6 +2,8 @@ import os
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+
+import requests
 from dotenv import load_dotenv
 
 # Tavily Search
@@ -37,11 +39,15 @@ class WebSearchTool:
         self.tavily_client = None
         self.ddgs_client = None
         self.naver_client = None
+        self.searxng_api_url = None
+        self.searxng_api_key = None
         self.search_cache = {}  # Search result caching
         self._initialize_search_clients()
-    
+
     def _initialize_search_clients(self):
         """Initialize available search clients"""
+        load_dotenv()
+
         # Initialize Tavily if API key is available
         tavily_api_key = os.getenv('TAVILY_API_KEY')
         if TAVILY_AVAILABLE and tavily_api_key and not tavily_api_key.startswith('tvly-your-'):
@@ -74,6 +80,79 @@ class WebSearchTool:
                 print(f"Naver initialization failed: {e}")
         else:
             print("Naver client credentials not found")
+
+        # Initialize SearXNG (optional)
+        searxng_api_url = (
+            os.getenv('SEARXNG_API_URL')
+            or os.getenv('SearXNG')
+        )
+        if not searxng_api_url:
+            base_url = os.getenv('SEARXNG_BASE_URL')
+            if base_url:
+                searxng_api_url = base_url.rstrip('/') + '/search'
+
+        self.searxng_api_key = os.getenv('SEARXNG_API_KEY')
+
+        if searxng_api_url:
+            try:
+                response = requests.get(
+                    searxng_api_url,
+                    params={'q': 'healthcheck', 'format': 'json'},
+                    timeout=30,
+                )
+                response.raise_for_status()
+                self.searxng_api_url = searxng_api_url
+                print(f"SearXNG search tool initialized at {self.searxng_api_url}")
+            except Exception as e:
+                self.searxng_api_url = None
+                print(f"SearXNG initialization failed for '{searxng_api_url}': {e}")
+        else:
+            print("SearXNG configuration not found (SEARXNG_API_URL / SearXNG / SEARXNG_BASE_URL)")
+
+    def search_with_searxng(self, query: str, max_results: int = 3) -> List[Dict[str, Any]]:
+        """Search using a configured SearXNG instance."""
+        if not self.searxng_api_url:
+            return []
+
+        try:
+            headers: Dict[str, str] = {}
+            if self.searxng_api_key:
+                headers['Authorization'] = f"Bearer {self.searxng_api_key}"
+
+            response = requests.get(
+                self.searxng_api_url,
+                params={
+                    'q': query,
+                    'format': 'json',
+                    'categories': 'general',
+                },
+                headers=headers,
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            hits = payload.get('results', [])
+
+            results: List[Dict[str, Any]] = []
+            for hit in hits[:max_results]:
+                url = hit.get('url') or ''
+                if not url or url.lower().endswith('.pdf'):
+                    continue
+                content = hit.get('content') or hit.get('snippet', '')
+                results.append({
+                    'title': hit.get('title') or url,
+                    'url': url,
+                    'content': content,
+                    'score': 0.75,
+                    'source': 'searxng',
+                    'published_date': hit.get('publishedDate') or hit.get('published_date') or '',
+                    'raw_content': content,
+                })
+
+            return results
+        except Exception as e:
+            print(f"SearXNG search error: {e}")
+            return []
     
     def search_with_tavily(self, query: str, max_results: int = 3) -> List[Dict[str, Any]]:
         """Search using LangChain TavilySearch"""
@@ -232,6 +311,15 @@ class WebSearchTool:
             print(f"  Naver: {len(naver_results)} results")
         elif 'naver' in enabled_engines:
             print(f"  Naver: disabled (not available)")
+
+        # Use SearXNG if configured
+        if 'searxng' in enabled_engines and self.searxng_api_url:
+            remaining_results = max(1, max_results - len(all_results))
+            searxng_results = self.search_with_searxng(query, max_results=remaining_results)
+            all_results.extend(searxng_results)
+            print(f"  SearXNG: {len(searxng_results)} results")
+        elif 'searxng' in enabled_engines:
+            print("  SearXNG: disabled (no API URL configured)")
         
         # Fallback to mock if no search engines available or enabled
         if not all_results:
@@ -258,14 +346,20 @@ class WebSearchTool:
     
     def is_available(self) -> bool:
         """Check if any search engine is available"""
-        return self.tavily_client is not None or self.ddgs_client is not None or self.naver_client is not None
-    
+        return (
+            self.tavily_client is not None
+            or self.ddgs_client is not None
+            or self.naver_client is not None
+            or self.searxng_api_url is not None
+        )
+
     def get_status(self) -> Dict[str, bool]:
         """Get status of all search engines"""
         return {
             'tavily': self.tavily_client is not None,
             'duckduckgo': self.ddgs_client is not None,
             'naver': self.naver_client is not None,
+            'searxng': self.searxng_api_url is not None,
             'any_available': self.is_available()
         }
 
